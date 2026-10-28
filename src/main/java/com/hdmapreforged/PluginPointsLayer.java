@@ -8,7 +8,6 @@ import java.awt.image.*;
 import java.util.*;
 import java.util.List;
 import java.util.function.*;
-import lombok.extern.slf4j.*;
 import net.runelite.client.ui.overlay.worldmap.*;
 
 /**
@@ -19,13 +18,13 @@ import net.runelite.client.ui.overlay.worldmap.*;
  * picture is not drawn (Quest Helper hides its point so). Off the view, a point that snaps to the edge is shown at the
  * edge as the player is, a pointer with the icon, and told so as the game's map would. Swing thread.
  */
-@Slf4j
 final class PluginPointsLayer implements MapView.Overlay, MapView.HitLayer {
     /** Snapped to the edge once the point's spot is this far out, so its picture stays in view. */
     static final int EDGE = 12;
 
     final MapView view;
-    final List<WorldMapPoint> points;
+    /** The points as of the last game tick. */
+    final Supplier<List<WorldMapPoint>> points;
     final BooleanSupplier shown;
     /** The points as last drawn, by identity: a point is a value object comparing its picture too. */
     final Map<WorldMapPoint, Drawn> drawn = new IdentityHashMap<>();
@@ -41,7 +40,7 @@ final class PluginPointsLayer implements MapView.Overlay, MapView.HitLayer {
         Rectangle2D at;
     }
 
-    PluginPointsLayer(MapView view, List<WorldMapPoint> points, BooleanSupplier shown) {
+    PluginPointsLayer(MapView view, Supplier<List<WorldMapPoint>> points, BooleanSupplier shown) {
         this.view = view;
         this.points = points;
         this.shown = shown;
@@ -50,18 +49,14 @@ final class PluginPointsLayer implements MapView.Overlay, MapView.HitLayer {
         view.hitLayers.add(0, this);
     }
 
-    /** The manager's own list, which it keeps package-private; empty when it cannot be read, said in the log. */
+    /** The manager's points: it has no getter for them, but removeIf shows each one; none is removed. Any thread. */
     static List<WorldMapPoint> points(WorldMapPointManager manager) {
-        try {
-            var field = WorldMapPointManager.class.getDeclaredField("worldMapPoints");
-            field.setAccessible(true);
-            @SuppressWarnings("unchecked")
-            var points = (List<WorldMapPoint>) field.get(manager);
-            return points;
-        } catch (ReflectiveOperationException | RuntimeException e) {
-            log.warn("Other plugins' map icons cannot be read", e);
-            return List.of();
-        }
+        var points = new ArrayList<WorldMapPoint>();
+        manager.removeIf(point -> {
+            points.add(point);
+            return false;
+        });
+        return points;
     }
 
     /** Changes when a point comes, goes, moves or changes its picture: compared each tick to repaint. */
@@ -93,7 +88,7 @@ final class PluginPointsLayer implements MapView.Overlay, MapView.HitLayer {
         var current = Collections.newSetFromMap(new IdentityHashMap<WorldMapPoint, Boolean>());
         var now = new ArrayList<Drawn>();
         if (shown.getAsBoolean()) {
-            for (var point : points) {
+            for (var point : points.get()) {
                 current.add(point);
                 var d = drawnOf(point);
                 d.at = null;

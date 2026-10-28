@@ -123,8 +123,8 @@ public class HdMapReforgedPlugin extends Plugin {
     IconLayer[] gameIcons = new IconLayer[0];
     GraveMarker[] graves = new GraveMarker[0];
     PluginPointsLayer[] pluginPoints = new PluginPointsLayer[0];
-    /** Other plugins' world map icons, the manager's own list; and as last seen, to repaint when they change. */
-    List<WorldMapPoint> mapPoints = List.of();
+    /** Other plugins' world map icons as of the last tick (the manager has no getter: collected each tick), and as last seen, to repaint when they change. */
+    volatile List<WorldMapPoint> mapPoints = List.of();
     int mapPointsSeen;
     final HotkeyListener mapKey = new HotkeyListener(() -> config.openMapKey()) {
         public void keyPressed(KeyEvent e) {
@@ -241,8 +241,8 @@ public class HdMapReforgedPlugin extends Plugin {
         gameIcons = new IconLayer[]{gameIconLayer(screen), gameIconLayer(fullScreen)};
         graves = new GraveMarker[]{new GraveMarker(screen.view), new GraveMarker(fullScreen.view)};
         mapPoints = PluginPointsLayer.points(worldMapPointManager);
-        pluginPoints = new PluginPointsLayer[]{new PluginPointsLayer(screen.view, mapPoints, config::pluginIcons),
-            new PluginPointsLayer(fullScreen.view, mapPoints, config::pluginIcons)};
+        pluginPoints = new PluginPointsLayer[]{new PluginPointsLayer(screen.view, () -> mapPoints, config::pluginIcons),
+            new PluginPointsLayer(fullScreen.view, () -> mapPoints, config::pluginIcons)};
         clientThread.invoke(this::checkGrave);
         var pictures = new NpcImages((id, done) -> {
             String version = tiles.version;
@@ -399,6 +399,7 @@ public class HdMapReforgedPlugin extends Plugin {
             });
         }
         updateUnlocks();
+        mapPoints = PluginPointsLayer.points(worldMapPointManager);
         int points = PluginPointsLayer.signature(mapPoints);
         if (points != mapPointsSeen) {
             mapPointsSeen = points;
